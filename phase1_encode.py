@@ -173,16 +173,20 @@ def run_benchmark(
 
             print(f"  [Scenario: {name}] Processing {len(samples)} samples (coverage {coverage}%)...")
 
-            # Pin each process to a unique CPU core
-            manager = multiprocessing.Manager()
-            cpu_id_queue = manager.Queue()
-            for cpu_id in range(num_cpus):
-                cpu_id_queue.put(cpu_id)
+            # Pin each process to a unique CPU core (Linux only; macOS lacks sched_setaffinity)
+            if hasattr(os, "sched_setaffinity"):
+                manager = multiprocessing.Manager()
+                cpu_id_queue = manager.Queue()
+                for cpu_id in range(num_cpus):
+                    cpu_id_queue.put(cpu_id)
+                executor_kwargs = dict(initializer=worker_init, initargs=(cpu_id_queue,))
+            else:
+                manager = None
+                executor_kwargs = {}
 
             with concurrent.futures.ProcessPoolExecutor(
                 max_workers=num_cpus,
-                initializer=worker_init,
-                initargs=(cpu_id_queue,)
+                **executor_kwargs
             ) as executor:
                 futures = {
                     executor.submit(
