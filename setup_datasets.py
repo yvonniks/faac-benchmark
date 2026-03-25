@@ -49,9 +49,32 @@ TEMP_DIR = os.path.join(SCRIPT_DIR, "data", "temp")
 def download_and_extract(name, url):
     os.makedirs(TEMP_DIR, exist_ok=True)
     zip_path = os.path.join(TEMP_DIR, f"{name}.zip")
-    if not os.path.exists(zip_path):
+
+    # Download if missing or corrupted (GitHub sends a redirect; validate with zipfile).
+    need_download = True
+    if os.path.exists(zip_path):
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as _zf:
+                pass  # quick integrity check
+            need_download = False
+        except zipfile.BadZipFile:
+            print(f"Cached {name}.zip is corrupt, re-downloading...")
+            os.remove(zip_path)
+
+    if need_download:
         print(f"Downloading {name}...")
-        urllib.request.urlretrieve(url, zip_path)
+        # Use urllib with explicit redirect following and streaming write to
+        # handle GitHub's codeload redirects reliably.
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req) as response, open(zip_path, 'wb') as out:
+            shutil.copyfileobj(response, out)
+        # Validate what we got
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as _zf:
+                pass
+        except zipfile.BadZipFile as e:
+            os.remove(zip_path)
+            raise RuntimeError(f"Downloaded {name}.zip is not a valid zip: {e}")
 
     print(f"Extracting {name}...")
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
