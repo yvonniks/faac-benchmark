@@ -111,23 +111,31 @@ def get_process_visqol_py(mode_str):
             _process_visqol_instances[mode_str] = None
     return _process_visqol_instances[mode_str]
 
-def get_aac_path(key, aac_dir, results_path):
+def get_aac_path(key, aac_dir, results_path, aac_files=None):
     results_filename = os.path.basename(results_path)
     precision_suffix = ""
     if "_base.json" in results_filename:
-        precision_suffix = results_filename.replace("_base.json", "_base.aac")
+        precision_suffix = "_base"
     elif "_cand.json" in results_filename:
-        precision_suffix = results_filename.replace("_cand.json", "_cand.aac")
+        precision_suffix = "_cand"
 
-    target_filename = f"{key}_{precision_suffix}"
+    # Try exact match first
+    target_filename = f"{key}{precision_suffix}.aac"
     aac_path = os.path.join(aac_dir, target_filename)
+    if os.path.exists(aac_path):
+        return aac_path
 
-    if not os.path.exists(aac_path):
-        aac_files = [f for f in os.listdir(aac_dir) if f.startswith(key) and f.endswith(".aac")]
-        if not aac_files:
+    # Fallback to prefix matching
+    if aac_files is None:
+        try:
+            aac_files = [f for f in os.listdir(aac_dir) if f.endswith(".aac")]
+        except FileNotFoundError:
             return None
-        aac_path = os.path.join(aac_dir, aac_files[0])
-    return aac_path
+
+    matching = [f for f in aac_files if f.startswith(key)]
+    if not matching:
+        return None
+    return os.path.join(aac_dir, matching[0])
 
 def convert_to_wav(input_path, output_path, rate, channels):
     try:
@@ -143,49 +151,51 @@ def convert_to_wav(input_path, output_path, rate, channels):
         print(f"  FFmpeg conversion failed for {input_path}: {e}")
         return False
 
-def compute_single_mos(key, entry, aac_dir, external_data_dir, results_path):
+def get_sample_info(key, entry, aac_dir, external_data_dir, results_path, aac_files=None):
     scenario_name = entry.get("scenario")
     filename = entry.get("filename")
     cfg = SCENARIOS.get(scenario_name)
 
     if not cfg:
-        return key, None
+        return None
 
     data_subdir = "speech" if cfg["mode"] == "speech" else "audio"
     ref_input_path = os.path.join(external_data_dir, data_subdir, filename)
 
-    aac_path = get_aac_path(key, aac_dir, results_path)
-    if not aac_path:
+    aac_path = get_aac_path(key, aac_dir, results_path, aac_files=aac_files)
+
+    return {
+        "cfg": cfg,
+        "ref_input_path": ref_input_path,
+        "aac_path": aac_path,
+        "v_rate": cfg["visqol_rate"],
+        "v_channels": 1 if cfg["mode"] == "speech" else 2
+    }
+
+def compute_single_mos(key, entry, aac_dir, external_data_dir, results_path, aac_files=None):
+    info = get_sample_info(key, entry, aac_dir, external_data_dir, results_path, aac_files=aac_files)
+    if not info or not info["aac_path"]:
         return key, None
 
-    # FFmpeg read gate: verify the AAC file decodes without error
-    try:
-        if ffmpeg:
-            # Decode to the null muxer to verify decoding without buffering audio into memory
-            ffmpeg.input(aac_path).output('null', format='null').run(
-                quiet=True)
-        else:
-            # Discard both stdout and stderr; we only care that decoding succeeds
-            subprocess.run(
-                ['ffmpeg', '-i', aac_path, '-f', 'null', '-'],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-    except Exception as e:
-        print(f"  FFmpeg decode gate failed for {key}: {e}")
-        return key, 1.0
+    cfg = info["cfg"]
+    ref_input_path = info["ref_input_path"]
+    aac_path = info["aac_path"]
+    v_rate = info["v_rate"]
+    v_channels = info["v_channels"]
 
     with tempfile.TemporaryDirectory() as tmpdir:
         v_ref = os.path.join(tmpdir, "vref.wav")
         v_deg = os.path.join(tmpdir, "vdeg.wav")
-        v_rate = cfg["visqol_rate"]
-        v_channels = 1 if cfg["mode"] == "speech" else 2
 
         if not convert_to_wav(ref_input_path, v_ref, v_rate, v_channels):
             return key, None
+
+        # Combined decode gate and conversion
         if not convert_to_wav(aac_path, v_deg, v_rate, v_channels):
-            return key, None
+            # If conversion fails, it might be a decode error. Returning 1.0 as "worst case"
+            # though convert_to_wav already prints the error.
+            print(f"  FFmpeg decode gate failed for {key}")
+            return key, 1.0
 
         try:
             # 1. Try visqol-python (Modern)
@@ -223,16 +233,15 @@ def compute_single_mos(key, entry, aac_dir, external_data_dir, results_path):
 
     return key, None
 
-def run_visqol_python_batch(pending, aac_dir, external_data_dir, results_path):
+def run_visqol_python_batch(pending, aac_dir, external_data_dir, results_path, aac_files=None):
     print(f"Using visqol-python batch mode for {len(pending)} samples...")
 
     # We need to group by mode (audio vs speech)
     modes = {"audio": [], "speech": []}
     for key, entry in pending.items():
-        scenario_name = entry.get("scenario")
-        cfg = SCENARIOS.get(scenario_name)
-        if cfg:
-            modes[cfg["mode"]].append((key, entry))
+        info = get_sample_info(key, entry, aac_dir, external_data_dir, results_path, aac_files=aac_files)
+        if info:
+            modes[info["cfg"]["mode"]].append((key, entry, info))
 
     results = {}
     with tempfile.TemporaryDirectory() as batch_tmpdir:
@@ -248,19 +257,13 @@ def run_visqol_python_batch(pending, aac_dir, external_data_dir, results_path):
 
             file_pairs = []
             valid_keys = []
-            for key, entry in items:
-                scenario_name = entry.get("scenario")
-                filename = entry.get("filename")
-                cfg = SCENARIOS.get(scenario_name)
-                v_rate = cfg["visqol_rate"]
-                v_channels = 1 if cfg["mode"] == "speech" else 2
-
-                data_subdir = "speech" if cfg["mode"] == "speech" else "audio"
-                ref_input_path = os.path.join(external_data_dir, data_subdir, filename)
-                aac_path = get_aac_path(key, aac_dir, results_path)
+            for key, entry, info in items:
+                v_rate = info["v_rate"]
+                v_channels = info["v_channels"]
+                ref_input_path = info["ref_input_path"]
+                aac_path = info["aac_path"]
 
                 if aac_path and os.path.exists(ref_input_path):
-                    # visqol-python (soundfile) doesn't support AAC, so we must convert to WAV
                     v_ref = os.path.join(batch_tmpdir, f"{key}_ref.wav")
                     v_deg = os.path.join(batch_tmpdir, f"{key}_deg.wav")
 
@@ -272,7 +275,6 @@ def run_visqol_python_batch(pending, aac_dir, external_data_dir, results_path):
                     print(f"    Missing file for {key}, skipping.")
 
             if file_pairs:
-                # visqol-python handles parallel execution internally if requested
                 batch_results = api.measure_batch(file_pairs, parallel=True)
                 for key, result in zip(valid_keys, batch_results):
                     if isinstance(result, Exception):
@@ -298,6 +300,12 @@ def main():
     total = len(matrix)
     num_cpus = os.cpu_count() or 1
 
+    # Precompute AAC file list for performance
+    try:
+        aac_files = [f for f in os.listdir(aac_dir) if f.endswith(".aac")]
+    except FileNotFoundError:
+        aac_files = []
+
     # Filter to entries that don't already have a MOS score
     pending = {key: entry for key, entry in matrix.items() if entry.get("mos") is None}
     skipped = total - len(pending)
@@ -312,7 +320,7 @@ def main():
 
     if HAS_VISQOL_PYTHON:
         try:
-            mos_results = run_visqol_python_batch(pending, aac_dir, external_data_dir, results_path)
+            mos_results = run_visqol_python_batch(pending, aac_dir, external_data_dir, results_path, aac_files=aac_files)
         except Exception as e:
             print(f"visqol-python batch mode failed, falling back: {e}")
 
@@ -324,7 +332,7 @@ def main():
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=num_cpus) as executor:
             futures = {
-                executor.submit(compute_single_mos, key, entry, aac_dir, external_data_dir, results_path): key
+                executor.submit(compute_single_mos, key, entry, aac_dir, external_data_dir, results_path, aac_files): key
                 for key, entry in still_pending.items()
             }
 
