@@ -171,7 +171,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# (Optional) Use Numba acceleration for ViSQOL
+# Use Numba acceleration for ViSQOL
 pip install "visqol-python[accel]"
 ```
 

@@ -84,6 +84,20 @@ find_visqol_assets()
 
 # Process-local storage for ViSQOL instances (Python mode)
 _process_visqol_instances = {}
+_process_visqol_api_instances = {}
+
+def get_process_visqol_python(mode_str):
+    if not HAS_VISQOL_PYTHON:
+        return None
+    if mode_str not in _process_visqol_api_instances:
+        try:
+            api = VisqolApi()
+            api.create(mode=mode_str)
+            _process_visqol_api_instances[mode_str] = api
+        except Exception as e:
+            print(f" Failed to initialize ViSQOL Python (modern): {e}")
+            _process_visqol_api_instances[mode_str] = None
+    return _process_visqol_api_instances[mode_str]
 
 def get_process_visqol_py(mode_str):
     if not HAS_VISQOL_PY:
@@ -147,11 +161,17 @@ def compute_single_mos(key, entry, aac_dir, external_data_dir, results_path):
     # FFmpeg read gate: verify the AAC file decodes without error
     try:
         if ffmpeg:
-            ffmpeg.input(aac_path).output('pipe:', format='s16le').run(
-                quiet=True, capture_stdout=True, capture_stderr=True)
+            # Decode to the null muxer to verify decoding without buffering audio into memory
+            ffmpeg.input(aac_path).output('null', format='null').run(
+                quiet=True)
         else:
-            subprocess.run(['ffmpeg', '-i', aac_path, '-f', 's16le', '-'],
-                           check=True, capture_output=True)
+            # Discard both stdout and stderr; we only care that decoding succeeds
+            subprocess.run(
+                ['ffmpeg', '-i', aac_path, '-f', 'null', '-'],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
     except Exception as e:
         print(f"  FFmpeg decode gate failed for {key}: {e}")
         return key, 1.0
@@ -170,10 +190,10 @@ def compute_single_mos(key, entry, aac_dir, external_data_dir, results_path):
         try:
             # 1. Try visqol-python (Modern)
             if HAS_VISQOL_PYTHON:
-                api = VisqolApi()
-                api.create(mode=cfg["mode"])
-                result = api.measure(v_ref, v_deg)
-                return key, float(result.moslqo)
+                api = get_process_visqol_python(cfg["mode"])
+                if api:
+                    result = api.measure(v_ref, v_deg)
+                    return key, float(result.moslqo)
 
             # 2. Try visqol_py (Legacy)
             if HAS_VISQOL_PY:
@@ -221,8 +241,10 @@ def run_visqol_python_batch(pending, aac_dir, external_data_dir, results_path):
                 continue
 
             print(f"  Processing {len(items)} {mode} samples...")
-            api = VisqolApi()
-            api.create(mode=mode)
+            api = get_process_visqol_python(mode)
+            if not api:
+                print(f"    Failed to get VisqolApi for {mode}, skipping batch.")
+                continue
 
             file_pairs = []
             valid_keys = []

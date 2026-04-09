@@ -5,8 +5,6 @@ on:
     branches: [ "master" ]
     paths:
       - 'Dockerfile.visqol'
-      - 'requirements_visqol.txt'
-      - 'requirements.txt'
       - 'config.py'
       - 'phase2_mos.py'
 
@@ -29,9 +27,7 @@ jobs:
           files_to_hash = [
               "Dockerfile.visqol",
               "config.py",
-              "phase2_mos.py",
-              "requirements.txt",
-              "requirements_visqol.txt"
+              "phase2_mos.py"
           ]
           hasher = hashlib.sha256()
           for fname in sorted(files_to_hash):
