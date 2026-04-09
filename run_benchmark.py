@@ -30,9 +30,7 @@ def calculate_docker_hash(script_dir):
     files_to_hash = [
         "Dockerfile.visqol",
         "config.py",
-        "phase2_mos.py",
-        "requirements.txt",
-        "requirements_visqol.txt"
+        "phase2_mos.py"
     ]
     hasher = hashlib.sha256()
     for fname in sorted(files_to_hash):
@@ -106,13 +104,22 @@ def main():
     # Strategy 1 & 2: Local Python or Local Binary
     has_local_visqol = False
 
-    # Check for visqol_py
+    # Check for visqol-python
     try:
-        import visqol_py
-        print("Found local visqol_py package.")
+        from visqol import VisqolApi
+        print("Found local visqol-python package.")
         has_local_visqol = True
     except ImportError:
         pass
+
+    # Check for visqol_py
+    if not has_local_visqol:
+        try:
+            import visqol_py
+            print("Found local visqol_py package.")
+            has_local_visqol = True
+        except ImportError:
+            pass
 
     # Check for visqol binary
     if not has_local_visqol:
@@ -149,7 +156,7 @@ def main():
         if not container_tool:
             print(">>> ERROR: No local ViSQOL and no container tool (docker/podman) found.")
             print("Please either:")
-            print("  1. Install ViSQOL dependencies: pip install -r requirements_visqol.txt")
+            print("  1. Install ViSQOL dependencies: pip install \"visqol-python[accel]\"")
             print("  2. Install a 'visqol' binary and add it to your PATH.")
             print("  3. Install Docker or Podman and ensure the daemon/service is running.")
             print("  4. Run with --skip-mos if you only need encoding metrics.")

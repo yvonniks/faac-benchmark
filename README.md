@@ -171,10 +171,6 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# (Optional) ViSQOL dependencies for MOS computation
-pip install -r requirements_visqol.txt
-```
-
 ### 2. Prepare Datasets
 Downloads samples and generates 10-minute synthetic throughput signals (Sine, Sweep, Noise, Silence).
 ```bash
@@ -204,7 +200,8 @@ python3 run_benchmark.py ... --exclude-tests "white_noise.wav"
 This script manages everything for you:
 1.  **Phase 1**: Encodes samples and measures throughput and library size.
 2.  **Phase 2**: Computes perceptual quality (MOS). It automatically attempts to use your local ViSQOL installation in the following order:
-    - **Python**: `visqol_py` package.
+    - **Python (Modern)**: `visqol-python` package (preferred, supports batch mode & Numba acceleration).
+    - **Python (Legacy)**: `visqol_py` package.
     - **Process**: `visqol` binary (found in PATH or via `VISQOL_BIN` env var).
     - **Docker**: Falls back to containerized execution via **Docker** or **Podman**.
 
