@@ -171,10 +171,6 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Use Numba acceleration for ViSQOL
-pip install "visqol-python[accel]"
-```
-
 ### 2. Prepare Datasets
 Downloads samples and generates 10-minute synthetic throughput signals (Sine, Sweep, Noise, Silence).
 ```bash
