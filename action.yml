@@ -51,7 +51,6 @@ runs:
       shell: bash
       run: |
         pip install -r ${{ github.action_path }}/requirements.txt
-        pip install "visqol-python[accel]"
 
     - name: Restore Datasets
       id: cache-datasets
