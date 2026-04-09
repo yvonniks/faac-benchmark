@@ -31,8 +31,7 @@ def calculate_docker_hash(script_dir):
         "Dockerfile.visqol",
         "config.py",
         "phase2_mos.py",
-        "requirements.txt",
-        "requirements_visqol.txt"
+        "requirements.txt"
     ]
     hasher = hashlib.sha256()
     for fname in sorted(files_to_hash):
@@ -106,13 +105,22 @@ def main():
     # Strategy 1 & 2: Local Python or Local Binary
     has_local_visqol = False
 
-    # Check for visqol_py
+    # Check for visqol-python
     try:
-        import visqol_py
-        print("Found local visqol_py package.")
+        from visqol import VisqolApi
+        print("Found local visqol-python package.")
         has_local_visqol = True
     except ImportError:
         pass
+
+    # Check for visqol_py
+    if not has_local_visqol:
+        try:
+            import visqol_py
+            print("Found local visqol_py package.")
+            has_local_visqol = True
+        except ImportError:
+            pass
 
     # Check for visqol binary
     if not has_local_visqol:
