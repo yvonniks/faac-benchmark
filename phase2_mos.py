@@ -198,21 +198,7 @@ def compute_single_mos(key, entry, aac_dir, external_data_dir, results_path, aac
             return key, 1.0
 
         try:
-            # 1. Try visqol-python (Modern)
-            if HAS_VISQOL_PYTHON:
-                api = get_process_visqol_python(cfg["mode"])
-                if api:
-                    result = api.measure(v_ref, v_deg)
-                    return key, float(result.moslqo)
-
-            # 2. Try visqol_py (Legacy)
-            if HAS_VISQOL_PY:
-                visqol = get_process_visqol_py(cfg["mode"])
-                if visqol:
-                    result = visqol.measure(v_ref, v_deg)
-                    return key, float(result.moslqo)
-
-            # 3. Try Binary Mode
+            # 1. Try Binary Mode (Highest consistency with known-good results)
             if VISQOL_BIN and os.path.exists(VISQOL_BIN):
                 cmd = [VISQOL_BIN, "--reference_file", v_ref, "--degraded_file", v_deg]
                 if cfg["mode"] == "speech":
@@ -228,6 +214,20 @@ def compute_single_mos(key, entry, aac_dir, external_data_dir, results_path, aac
                     if "MOS-LQO:" in line:
                         mos = float(line.split()[-1])
                         return key, mos
+
+            # 2. Try visqol_py (Legacy)
+            if HAS_VISQOL_PY:
+                visqol = get_process_visqol_py(cfg["mode"])
+                if visqol:
+                    result = visqol.measure(v_ref, v_deg)
+                    return key, float(result.moslqo)
+
+            # 3. Try visqol-python (Modern) - Moved to end due to MOS discrepancy in speech mode
+            if HAS_VISQOL_PYTHON:
+                api = get_process_visqol_python(cfg["mode"])
+                if api:
+                    result = api.measure(v_ref, v_deg)
+                    return key, float(result.moslqo)
         except Exception as e:
             print(f"  Error computing MOS for {key}: {e}")
 
@@ -318,17 +318,12 @@ def main():
 
     mos_results = {}
 
-    if HAS_VISQOL_PYTHON:
-        try:
-            mos_results = run_visqol_python_batch(pending, aac_dir, external_data_dir, results_path, aac_files=aac_files)
-        except Exception as e:
-            print(f"visqol-python batch mode failed, falling back: {e}")
-
-    # Fallback to other methods for any still pending
-    still_pending = {key: entry for key, entry in pending.items() if key not in mos_results}
+    # Sequential/Parallel fallback stack (Binary -> Legacy -> Modern)
+    # We no longer use unconditional visqol-python batching to ensure binary priority.
+    still_pending = pending
     if still_pending:
-        mode_str = "visqol-python (single)" if HAS_VISQOL_PYTHON else "visqol_py" if HAS_VISQOL_PY else "Binary" if VISQOL_BIN else "None"
-        print(f"Computing MOS for {len(still_pending)} samples using fallback ({mode_str}, {num_cpus} cores)...")
+        mode_str = "Binary" if VISQOL_BIN else "visqol_py" if HAS_VISQOL_PY else "visqol-python" if HAS_VISQOL_PYTHON else "None"
+        print(f"Computing MOS for {len(still_pending)} samples using prioritized stack (Primary: {mode_str}, {num_cpus} cores)...")
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=num_cpus) as executor:
             futures = {
