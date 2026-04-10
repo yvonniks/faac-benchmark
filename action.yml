@@ -42,9 +42,6 @@ inputs:
     description: 'ViSQOL backend to use (auto, docker, visqol, visqol-py, visqol-python)'
     required: false
     default: 'docker'
-  extra-args:
-    description: 'Extra arguments to pass to faac encoder (e.g. "--tns")'
-    required: false
 
 runs:
   using: 'composite'
@@ -111,10 +108,6 @@ runs:
 
         if [ -n "${{ inputs.backend }}" ]; then
           EXTRA_ARGS="$EXTRA_ARGS --backend ${{ inputs.backend }}"
-        fi
-
-        if [ -n "${{ inputs.extra-args }}" ]; then
-          EXTRA_ARGS="$EXTRA_ARGS --extra-args=${{ inputs.extra-args }}"
         fi
         
         python3 ${{ github.action_path }}/run_benchmark.py \
