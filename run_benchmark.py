@@ -66,11 +66,18 @@ def main():
     parser.add_argument("--scenarios", help="Comma-separated list of scenarios to run")
     parser.add_argument("--include-tests", help="Comma-separated list of test filename globs to include")
     parser.add_argument("--exclude-tests", help="Comma-separated list of test filename globs to exclude")
-    parser.add_argument("--extra-args", help="Extra arguments to pass to faac encoder (e.g. '--tns')")
+    parser.add_argument("--extra-args", nargs="*", help="Extra arguments to pass to faac encoder (e.g. '--tns')")
     parser.add_argument("--backend", choices=["auto", "docker", "visqol", "visqol-py", "visqol-python"],
                         default="auto", help="ViSQOL backend to use")
 
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
+
+    # Combine explicit extra args and any unknown args (which might be hyphenated flags)
+    extra_args_list = []
+    if args.extra_args:
+        extra_args_list.extend(args.extra_args)
+    if unknown:
+        extra_args_list.extend(unknown)
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     phase1_script = os.path.join(script_dir, "phase1_encode.py")
@@ -91,8 +98,9 @@ def main():
         cmd_phase1.extend(["--include-tests", args.include_tests])
     if args.exclude_tests:
         cmd_phase1.extend(["--exclude-tests", args.exclude_tests])
-    if args.extra_args:
-        cmd_phase1.extend(["--extra-args", args.extra_args])
+    if extra_args_list:
+        # Use = format to ensure hyphenated values are correctly passed to the sub-process
+        cmd_phase1.append(f"--extra-args={' '.join(extra_args_list)}")
 
     subprocess.run(cmd_phase1, check=True)
 

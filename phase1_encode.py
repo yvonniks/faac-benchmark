@@ -280,11 +280,20 @@ if __name__ == "__main__":
     parser.add_argument("--scenarios", help="Comma-separated scenarios")
     parser.add_argument("--include-tests", help="Comma-separated include globs")
     parser.add_argument("--exclude-tests", help="Comma-separated exclude globs")
-    parser.add_argument("--extra-args", help="Extra arguments to pass to faac encoder (e.g. '--tns')")
+    parser.add_argument("--extra-args", nargs="*", help="Extra arguments to pass to faac encoder (e.g. '--tns')")
 
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
 
-    extra_args = args.extra_args.split() if args.extra_args else None
+    # Combine explicit extra args and any unknown args
+    extra_args_list = []
+    if args.extra_args:
+        # If passed via --extra-args="--flag1 --flag2", it might be a single string in the list
+        for arg in args.extra_args:
+            extra_args_list.extend(arg.split())
+    if unknown:
+        extra_args_list.extend(unknown)
+
+    extra_args = extra_args_list if extra_args_list else None
     data = run_benchmark(
         args.faac_bin,
         args.lib_path,
