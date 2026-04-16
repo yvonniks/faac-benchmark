@@ -273,6 +273,8 @@ def main():
     parser = argparse.ArgumentParser(description="Consolidate FAAC benchmark results.")
     parser.add_argument("results_dir", nargs="?", default=os.path.join(SCRIPT_DIR, "results"),
                         help="Path to the directory containing result JSON files")
+    parser.add_argument("--baseline", help="Explicit path to baseline JSON file")
+    parser.add_argument("--candidate", help="Explicit path to candidate JSON file")
     parser.add_argument("--base-sha", help="Baseline commit SHA")
     parser.add_argument("--cand-sha", help="Candidate commit SHA")
     parser.add_argument("--summary-only", action="store_true", help="Generate only the high-signal summary")
@@ -286,22 +288,43 @@ def main():
     base_sha = args.base_sha
     cand_sha = args.cand_sha
 
-    if not os.path.exists(results_dir):
-        sys.stderr.write(f"Error: Results directory '{results_dir}' does not exist.\n")
-        sys.exit(1)
-
-    files = os.listdir(results_dir)
-
     suites = {}
-    for f in files:
-        if f.endswith("_cand.json"):
-            suite_name = f[:-10]
-            base_f = suite_name + "_base.json"
-            if base_f in files:
-                suites[suite_name] = (
-                    os.path.join(
-                        results_dir, base_f), os.path.join(
-                        results_dir, f))
+
+    if args.baseline and args.candidate:
+        suites["manual"] = (args.baseline, args.candidate)
+    else:
+        if not os.path.exists(results_dir):
+            sys.stderr.write(f"Error: Results directory '{results_dir}' does not exist.\n")
+            sys.exit(1)
+
+        # 1. Look for new structure: baseline.json at root, candidate.json in subdirs
+        root_baseline = os.path.join(results_dir, "baseline.json")
+        if os.path.exists(root_baseline):
+            for root, dirs, files in os.walk(results_dir):
+                if "candidate.json" in files:
+                    rel_path = os.path.relpath(root, results_dir)
+                    suite_name = rel_path.replace(os.sep, "_")
+                    suites[suite_name] = (root_baseline, os.path.join(root, "candidate.json"))
+
+        # 2. Look for legacy structure: *_base.json and *_cand.json in the same dir
+        # (Only if we haven't found any new-structure suites or to complement them)
+        for root, dirs, files in os.walk(results_dir):
+            for f in files:
+                if f.endswith("_cand.json"):
+                    suite_name = f[:-10]
+                    base_f = suite_name + "_base.json"
+                    if base_f in files:
+                        # Use directory name as prefix if not at root
+                        rel_path = os.path.relpath(root, results_dir)
+                        full_suite_name = suite_name
+                        if rel_path != ".":
+                            full_suite_name = f"{rel_path.replace(os.sep, '_')}_{suite_name}"
+
+                        if full_suite_name not in suites:
+                            suites[full_suite_name] = (
+                                os.path.join(root, base_f),
+                                os.path.join(root, f)
+                            )
 
     if not suites:
         sys.stderr.write("No result pairs found in directory.\n")

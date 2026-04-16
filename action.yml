@@ -11,8 +11,13 @@ inputs:
     description: 'Identifier for this benchmark run'
     required: true
   output-json:
-    description: 'Path where the result JSON should be saved'
-    required: true
+    description: 'Output JSON filename. Defaults to baseline.json for "base" run, candidate.json otherwise.'
+    required: false
+    default: ''
+  results-dir:
+    description: 'Directory where results should be stored'
+    required: false
+    default: 'results'
   coverage:
     description: 'Percentage of dataset to cover (1-100)'
     required: false
@@ -109,11 +114,15 @@ runs:
         if [ -n "${{ inputs.backend }}" ]; then
           EXTRA_ARGS="$EXTRA_ARGS --backend ${{ inputs.backend }}"
         fi
+
+        if [ -n "${{ inputs.results-dir }}" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS --results-dir ${{ inputs.results-dir }}"
+        fi
         
         python3 ${{ github.action_path }}/run_benchmark.py \
           "${{ inputs.faac-bin }}" \
           "${{ inputs.libfaac-so }}" \
           "${{ inputs.run-name }}" \
-          "${{ inputs.output-json }}" \
+          ${{ inputs.output-json }} \
           --coverage "${{ inputs.coverage }}" \
           $EXTRA_ARGS
