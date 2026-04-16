@@ -113,30 +113,27 @@ def get_process_visqol_py(mode_str):
     return _process_visqol_instances[mode_str]
 
 def get_aac_path(key, aac_dir, results_path, aac_files=None):
-    results_filename = os.path.basename(results_path)
-    precision_suffix = ""
-    if "_base.json" in results_filename:
-        precision_suffix = "_base"
-    elif "_cand.json" in results_filename:
-        precision_suffix = "_cand"
-
-    # Try exact match first
-    target_filename = f"{key}{precision_suffix}.aac"
+    # Isolated results use simplified filenames: {key}.aac
+    target_filename = f"{key}.aac"
     aac_path = os.path.join(aac_dir, target_filename)
     if os.path.exists(aac_path):
         return aac_path
 
-    # Fallback to prefix matching
-    if aac_files is None:
-        try:
-            aac_files = [f for f in os.listdir(aac_dir) if f.endswith(".aac")]
-        except FileNotFoundError:
-            return None
+    # Legacy fallback: try to find the precision from the JSON if possible
+    # though with isolation this should be less necessary.
+    try:
+        with open(results_path, 'r') as f:
+            data = json.load(f)
+            precision = data.get("run_name")
+            if precision:
+                legacy_filename = f"{key}_{precision}.aac"
+                legacy_path = os.path.join(aac_dir, legacy_filename)
+                if os.path.exists(legacy_path):
+                    return legacy_path
+    except Exception:
+        pass
 
-    matching = [f for f in aac_files if f.startswith(key)]
-    if not matching:
-        return None
-    return os.path.join(aac_dir, matching[0])
+    return None
 
 def convert_to_wav(input_path, output_path, rate, channels):
     try:

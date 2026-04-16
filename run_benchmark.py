@@ -58,7 +58,8 @@ def main():
     parser.add_argument("faac_bin", help="Path to faac binary")
     parser.add_argument("lib_path", help="Path to libfaac.so")
     parser.add_argument("name", help="Name for this run")
-    parser.add_argument("output", help="Output JSON path")
+    parser.add_argument("output", nargs="?", help="Output JSON filename (optional)")
+    parser.add_argument("--results-dir", help="Results base directory", default="results")
     parser.add_argument("--coverage", type=int, default=100, help="Coverage percentage (1-100)")
     parser.add_argument("--skip-mos", action="store_true", help="Skip perceptual quality (MOS) computation")
     parser.add_argument("--visqol-image", help="Override the ViSQOL Docker image to use")
@@ -83,11 +84,29 @@ def main():
     phase1_script = os.path.join(script_dir, "phase1_encode.py")
     phase2_script = os.path.join(script_dir, "phase2_mos.py")
 
+    # Isolation Logic
+    results_base = os.path.abspath(args.results_dir)
+    if args.name == "base":
+        run_results_dir = results_base
+        run_output_dir = os.path.join(results_base, "output")
+        default_output = "baseline.json"
+    else:
+        run_results_dir = os.path.join(results_base, args.name)
+        run_output_dir = os.path.join(run_results_dir, "output")
+        default_output = "candidate.json"
+
+    os.makedirs(run_results_dir, exist_ok=True)
+    os.makedirs(run_output_dir, exist_ok=True)
+
+    output_filename = args.output or default_output
+    output_json_path = os.path.join(run_results_dir, output_filename)
+
     # Phase 1: Encoding
     print(">>> Phase 1: Encoding and Basic Metrics")
     cmd_phase1 = [
         sys.executable, phase1_script,
-        args.faac_bin, args.lib_path, args.name, args.output,
+        args.faac_bin, args.lib_path, args.name, output_json_path,
+        "--output-dir", run_output_dir,
         "--coverage", str(args.coverage)
     ]
     if args.sha:
@@ -179,8 +198,8 @@ def main():
         print(f"Using local ViSQOL backend: {selected_backend}")
         cmd_phase2 = [
             sys.executable, phase2_script,
-            args.output,
-            os.path.join(script_dir, "output"),
+            output_json_path,
+            run_output_dir,
             os.path.join(script_dir, "data", "external"),
             "--backend", selected_backend
         ]
@@ -249,10 +268,9 @@ def main():
             # Run
             print(f"Running MOS computation in {container_tool} (forcing amd64)...")
             # We need absolute paths for volume mounting
-            abs_output = os.path.abspath(args.output)
-            abs_results_dir = os.path.dirname(abs_output)
-            results_file = os.path.basename(abs_output)
-            abs_output_dir = os.path.abspath(os.path.join(script_dir, "output"))
+            abs_results_dir = os.path.abspath(run_results_dir)
+            results_file = os.path.basename(output_json_path)
+            abs_output_dir = os.path.abspath(run_output_dir)
             abs_data_dir = os.path.abspath(os.path.join(script_dir, "data", "external"))
 
             cmd_container = [

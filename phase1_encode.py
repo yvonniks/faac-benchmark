@@ -64,10 +64,10 @@ def worker_init(cpu_id_queue):
             print(f" Failed to pin process {os.getpid()} to CPU {cpu_id}: {e}")
 
 
-def process_sample(faac_bin_path, name, cfg, sample, data_dir, precision, env, extra_args=None):
+def process_sample(faac_bin_path, name, cfg, sample, data_dir, output_dir, env, extra_args=None):
     input_path = os.path.join(data_dir, sample)
     key = f"{name}_{sample}"
-    output_path = os.path.join(OUTPUT_DIR, f"{key}_{precision}.aac")
+    output_path = os.path.join(output_dir, f"{key}.aac")
 
     # Determine encoding parameters
     cmd = [faac_bin_path, "-o", output_path, input_path]
@@ -117,6 +117,7 @@ def run_benchmark(
         faac_bin_path,
         lib_path,
         precision,
+        output_dir,
         coverage=100,
         run_perceptual=True,
         sha=None,
@@ -126,9 +127,10 @@ def run_benchmark(
         extra_args=None):
     env = os.environ.copy()
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     results = {
         "sha": sha,
+        "run_name": precision,
         "matrix": {},
         "throughput": {},
         "lib_size": get_binary_size(lib_path)
@@ -199,7 +201,7 @@ def run_benchmark(
                         cfg,
                         sample,
                         data_dir,
-                        precision,
+                        output_dir,
                         env,
                         extra_args): sample for sample in samples}
                 for i, future in enumerate(
@@ -228,7 +230,7 @@ def run_benchmark(
             for sample in tp_samples:
                 input_path = os.path.join(tp_dir, sample)
                 output_path = os.path.join(
-                    OUTPUT_DIR, f"tp_{sample}_{precision}.aac")
+                    output_dir, f"tp_{sample}.aac")
 
                 print(f"  Benchmarking throughput with {sample}...")
                 try:
@@ -274,6 +276,7 @@ if __name__ == "__main__":
     parser.add_argument("lib_path", help="Path to libfaac.so")
     parser.add_argument("precision", help="Precision name")
     parser.add_argument("output", help="Output JSON path")
+    parser.add_argument("--output-dir", help="Directory for AAC files")
     parser.add_argument("--skip-mos", action="store_true", help="Skip perceptual quality (MOS) computation")
     parser.add_argument("--coverage", type=int, default=100, help="Coverage percentage (1-100)")
     parser.add_argument("--sha", help="Commit SHA")
@@ -294,10 +297,12 @@ if __name__ == "__main__":
         extra_args_list.extend(unknown)
 
     extra_args = extra_args_list if extra_args_list else None
+    output_dir = args.output_dir or OUTPUT_DIR
     data = run_benchmark(
         args.faac_bin,
         args.lib_path,
         args.precision,
+        output_dir,
         coverage=args.coverage,
         run_perceptual=not args.skip_mos,
         sha=args.sha,
