@@ -58,16 +58,16 @@ jobs:
         with:
           faac-bin: ./baseline/build_base/frontend/faac
           libfaac-so: ./baseline/build_base/libfaac/libfaac.so
-          run-name: ${{ matrix.arch }}_${{ matrix.precision }}_base
-          output-json: ./results/${{ matrix.arch }}_${{ matrix.precision }}_base.json
+          run-name: base
+          results-dir: results
 
       - name: Run Benchmark (Candidate)
         uses: nschimme/faac-benchmark@v1
         with:
           faac-bin: ./candidate/build_cand/frontend/faac
           libfaac-so: ./candidate/build_cand/libfaac/libfaac.so
-          run-name: ${{ matrix.arch }}_${{ matrix.precision }}_cand
-          output-json: ./results/${{ matrix.arch }}_${{ matrix.precision }}_cand.json
+          run-name: ${{ matrix.arch }}_${{ matrix.precision }}
+          results-dir: results
 
       - name: Upload Results
         uses: actions/upload-artifact@v4
@@ -113,8 +113,9 @@ Runs the encoding benchmark and MOS computation for a single configuration.
 | :--- | :--- | :---: | :--- |
 | `faac-bin` | Path to the `faac` binary. | Yes | |
 | `libfaac-so` | Path to the `libfaac.so` library. | Yes | |
-| `run-name` | Identifier for this benchmark run (e.g., `amd64_single_base`). | Yes | |
-| `output-json` | Path where the result JSON should be saved. | Yes | |
+| `run-name` | Identifier for this benchmark run (use `base` for the baseline). | Yes | |
+| `output-json` | Output JSON filename. | No | `baseline.json` or `candidate.json` |
+| `results-dir` | Directory where results should be stored. | No | `results` |
 | `coverage` | Percentage of dataset to cover (1-100). | No | `100` |
 | `skip-mos` | Skip perceptual quality (MOS) computation. | No | `false` |
 | `visqol-image` | Docker image for ViSQOL. Defaults to internal discovery logic. | No | `""` |
@@ -182,8 +183,16 @@ python3 setup_datasets.py
 
 You can run the full benchmark using the user-friendly entrypoint:
 ```bash
-python3 run_benchmark.py path/to/faac path/to/libfaac.so my_run results/my_run.json --coverage 100 --sha $(git rev-parse HEAD)
+# Run baseline
+python3 run_benchmark.py path/to/faac path/to/libfaac.so base --results-dir my_results
+
+# Run candidate
+python3 run_benchmark.py path/to/faac path/to/libfaac.so candidate1 --results-dir my_results
 ```
+
+This will create a structured directory:
+- `my_results/baseline.json`
+- `my_results/candidate1/candidate.json`
 
 #### Selecting the ViSQOL Backend
 You can explicitly select which ViSQOL implementation to use for MOS computation:
