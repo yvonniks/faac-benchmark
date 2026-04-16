@@ -64,10 +64,15 @@ def worker_init(cpu_id_queue):
             print(f" Failed to pin process {os.getpid()} to CPU {cpu_id}: {e}")
 
 
-def process_sample(faac_bin_path, name, cfg, sample, data_dir, precision, env, extra_args=None):
+def process_sample(faac_bin_path, name, cfg, sample, data_dir, precision, env, extra_args=None, aac_dir=None):
     input_path = os.path.join(data_dir, sample)
     key = f"{name}_{sample}"
-    output_path = os.path.join(OUTPUT_DIR, f"{key}_{precision}.aac")
+    output_dir = aac_dir or OUTPUT_DIR
+    if aac_dir:
+        # If a dedicated directory is provided, we don't need the precision suffix
+        output_path = os.path.join(output_dir, f"{key}.aac")
+    else:
+        output_path = os.path.join(output_dir, f"{key}_{precision}.aac")
 
     # Determine encoding parameters
     cmd = [faac_bin_path, "-o", output_path, input_path]
@@ -123,10 +128,12 @@ def run_benchmark(
         scenarios=None,
         include_tests=None,
         exclude_tests=None,
-        extra_args=None):
+        extra_args=None,
+        aac_dir=None):
     env = os.environ.copy()
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    actual_output_dir = aac_dir or OUTPUT_DIR
+    os.makedirs(actual_output_dir, exist_ok=True)
     results = {
         "sha": sha,
         "matrix": {},
@@ -201,7 +208,8 @@ def run_benchmark(
                         data_dir,
                         precision,
                         env,
-                        extra_args): sample for sample in samples}
+                        extra_args,
+                        aac_dir=aac_dir): sample for sample in samples}
                 for i, future in enumerate(
                         concurrent.futures.as_completed(futures)):
                     result = future.result()
@@ -227,8 +235,10 @@ def run_benchmark(
             overall_durations = []
             for sample in tp_samples:
                 input_path = os.path.join(tp_dir, sample)
-                output_path = os.path.join(
-                    OUTPUT_DIR, f"tp_{sample}_{precision}.aac")
+                if aac_dir:
+                    output_path = os.path.join(actual_output_dir, f"tp_{sample}.aac")
+                else:
+                    output_path = os.path.join(actual_output_dir, f"tp_{sample}_{precision}.aac")
 
                 print(f"  Benchmarking throughput with {sample}...")
                 try:
@@ -281,6 +291,7 @@ if __name__ == "__main__":
     parser.add_argument("--include-tests", help="Comma-separated include globs")
     parser.add_argument("--exclude-tests", help="Comma-separated exclude globs")
     parser.add_argument("--extra-args", nargs="*", help="Extra arguments to pass to faac encoder (e.g. '--tns')")
+    parser.add_argument("--aac-dir", help="Output directory for AAC files")
 
     args, unknown = parser.parse_known_args()
 
@@ -304,7 +315,8 @@ if __name__ == "__main__":
         scenarios=args.scenarios,
         include_tests=args.include_tests,
         exclude_tests=args.exclude_tests,
-        extra_args=extra_args)
+        extra_args=extra_args,
+        aac_dir=args.aac_dir)
 
     # Ensure results directory exists
     output_json = os.path.abspath(args.output)
