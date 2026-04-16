@@ -83,12 +83,20 @@ def main():
     phase1_script = os.path.join(script_dir, "phase1_encode.py")
     phase2_script = os.path.join(script_dir, "phase2_mos.py")
 
+    # Determine artifact directory from output path
+    abs_output = os.path.abspath(args.output)
+    abs_results_dir = os.path.dirname(abs_output)
+    results_file = os.path.basename(abs_output)
+    # The artifact directory (aac_dir) is now the same as the results directory
+    aac_dir = abs_results_dir
+
     # Phase 1: Encoding
     print(">>> Phase 1: Encoding and Basic Metrics")
     cmd_phase1 = [
         sys.executable, phase1_script,
         args.faac_bin, args.lib_path, args.name, args.output,
-        "--coverage", str(args.coverage)
+        "--coverage", str(args.coverage),
+        "--aac-dir", aac_dir
     ]
     if args.sha:
         cmd_phase1.extend(["--sha", args.sha])
@@ -180,7 +188,7 @@ def main():
         cmd_phase2 = [
             sys.executable, phase2_script,
             args.output,
-            os.path.join(script_dir, "output"),
+            aac_dir,
             os.path.join(script_dir, "data", "external"),
             "--backend", selected_backend
         ]
@@ -249,18 +257,13 @@ def main():
             # Run
             print(f"Running MOS computation in {container_tool} (forcing amd64)...")
             # We need absolute paths for volume mounting
-            abs_output = os.path.abspath(args.output)
-            abs_results_dir = os.path.dirname(abs_output)
-            results_file = os.path.basename(abs_output)
-            abs_output_dir = os.path.abspath(os.path.join(script_dir, "output"))
             abs_data_dir = os.path.abspath(os.path.join(script_dir, "data", "external"))
 
             cmd_container = [
                 container_tool, "run", "--rm", "--platform", "linux/amd64",
                 "-v", f"{abs_results_dir}:/results",
-                "-v", f"{abs_output_dir}:/output",
                 "-v", f"{abs_data_dir}:/data",
-                visqol_image, f"/results/{results_file}", "/output", "/data",
+                visqol_image, f"/results/{results_file}", "/results", "/data",
                 "--backend", "auto"
             ]
             subprocess.run(cmd_container, check=True)

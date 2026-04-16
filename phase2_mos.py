@@ -120,23 +120,19 @@ def get_aac_path(key, aac_dir, results_path, aac_files=None):
     elif "_cand.json" in results_filename:
         precision_suffix = "_cand"
 
-    # Try exact match first
+    # Try exact match first (with precision suffix)
     target_filename = f"{key}{precision_suffix}.aac"
     aac_path = os.path.join(aac_dir, target_filename)
     if os.path.exists(aac_path):
         return aac_path
 
-    # Fallback to prefix matching
-    if aac_files is None:
-        try:
-            aac_files = [f for f in os.listdir(aac_dir) if f.endswith(".aac")]
-        except FileNotFoundError:
-            return None
+    # Try exact match (without precision suffix, for isolated runs)
+    target_filename = f"{key}.aac"
+    aac_path = os.path.join(aac_dir, target_filename)
+    if os.path.exists(aac_path):
+        return aac_path
 
-    matching = [f for f in aac_files if f.startswith(key)]
-    if not matching:
-        return None
-    return os.path.join(aac_dir, matching[0])
+    return None
 
 def convert_to_wav(input_path, output_path, rate, channels):
     try:
